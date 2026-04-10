@@ -1,25 +1,37 @@
 # SDL3 GPU API
 
-The GPU API is a modern, cross-platform abstraction over Vulkan, Metal, and Direct3D 12.
+The GPU API provides a modern, low-level interface for 3D graphics and compute. It is based on command recording and submission.
 
-## GPU Workflow
+## GPU Workflow & Struct Dependencies
 
 ```mermaid
 graph TD
-    Device[SDL_GPUDevice] --> Queue[Command Queue]
-    Device --> Pipeline[GPU Pipeline State]
-    Device --> Buffer[GPU Buffer / Texture]
-    
-    Cmd[SDL_GPUCommandBuffer] -- Record --> Pass[Render / Compute Pass]
-    Pass -- Use --> Pipeline
-    Pass -- Use --> Buffer
-    
-    Cmd -- Submit --> Queue
-    Queue -- Acquire --> Swapchain[Swapchain Texture]
+    subgraph Device_Setup
+        Init[SDL_Init] --> Dev[SDL_CreateGPUDevice: format, debug, name]
+        Dev --> Claim[SDL_ClaimWindowForGPUDevice: device, window]
+    end
+
+    subgraph Pipeline_State
+        Dev --> Pipe[SDL_CreateGPUGraphicsPipeline: device, SDL_GPUGraphicsPipelineCreateInfo]
+    end
+
+    subgraph Frame_Recording
+        Dev --> CB[SDL_AcquireGPUCommandBuffer: device]
+        CB -- SDL_AcquireGPUSwapchainTexture --> ST[Swapchain Texture]
+        
+        CB -- SDL_BeginGPURenderPass --> RP[SDL_GPURenderPass]
+        RP -- SDL_BindGPUGraphicsPipeline --> Pipe
+        RP -- SDL_DrawGPUPrimitives --> Work[Recorded Work]
+        RP -- SDL_EndGPURenderPass --> CB
+    end
+
+    subgraph Submission
+        CB -- SDL_SubmitGPUCommandBuffer --> Done[Hardware Execution]
+    end
 ```
 
-### Core Concepts:
-1. **Device:** The physical/logical connection to the GPU hardware.
-2. **Command Buffer:** Where you record drawing or compute instructions.
-3. **Pipeline State:** Immutable state defining shaders, blending, etc.
-4. **Acquire/Submit:** You acquire a texture from the swapchain, record work, and submit it to the queue.
+### Critical Structs
+- **SDL_GPUGraphicsPipelineCreateInfo**: Huge struct defining shaders, vertex layout, blend modes, and depth testing.
+- **SDL_GPUCommandBuffer**: Represents a "to-do list" for the GPU.
+- **SDL_GPURenderPass**: Scoped object for drawing into specific textures.
+- **SDL_GPUBuffer**: Created via `SDL_CreateGPUBuffer`, used for vertices, indices, or uniforms.

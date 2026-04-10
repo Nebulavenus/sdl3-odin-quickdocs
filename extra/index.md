@@ -1,38 +1,36 @@
 # SDL3 Architecture Overview
 
-Welcome to the SDL3 Documentation. This guide provides a high-level view of how SDL3 subsystems interact.
+SDL3 is organized into several semi-independent subsystems. Most applications follow a standard lifecycle of initialization, window creation, event polling, and rendering.
 
-## Core Subsystems Relationship
+## General Lifecycle & Subsystems
 
 ```mermaid
 graph TD
-    App[Application] --> Init[SDL_Init]
-    Init --> Video[Video Subsystem]
-    Init --> Audio[Audio Subsystem]
-    Init --> Input[Input Subsystem]
-    
-    Video --> Window[SDL_Window]
-    Window --> Surface[SDL_Surface: CPU Rendering]
-    Window --> Renderer[SDL_Renderer: 2D GPU Accel]
-    Window --> GPU[SDL_GPU: 3D Modern API]
-    
-    Input --> Events[SDL_Events]
-    Events --> App
-    
-    Audio --> Stream[SDL_AudioStream]
-    Stream --> Device[Logical Audio Device]
+    subgraph Initialization
+        Start[App Start] --> Init[SDL_Init: flags]
+    end
+
+    subgraph Video_System
+        Init --> Win[SDL_CreateWindow: title, w, h, flags]
+        Win --> Props[SDL_GetWindowProperties: window]
+    end
+
+    subgraph Event_Loop
+        Win --> Poll[SDL_PollEvent: SDL_Event*]
+        Poll -- has event --> Handle[Handle Input/Quit]
+        Handle --> Poll
+        Poll -- empty --> Update[Update Game State]
+    end
+
+    subgraph Rendering
+        Update --> Render[Draw Frame]
+        Render --> Win
+    end
+
+    Handle -- Quit Event --> Quit[SDL_Quit]
 ```
 
-## Basic Initialization Flow
-
-1. **SDL_Init**: Initialize the subsystems you need (Video, Audio, etc.).
-2. **Create Window**: Use `SDL_CreateWindow`.
-3. **Choose Rendering Path**:
-    - **Renderer**: Easiest for 2D games.
-    - **GPU**: For modern 3D or high-performance graphics.
-    - **Surface**: For simple CPU-based pixel manipulation.
-4. **Main Loop**:
-    - Poll events via `SDL_PollEvent`.
-    - Update state.
-    - Render frame.
-5. **SDL_Quit**: Cleanup on exit.
+### Structs & Dependencies
+- **SDL_InitFlags**: Bit-set passed to `SDL_Init` (e.g., `SDL_INIT_VIDEO`, `SDL_INIT_AUDIO`).
+- **SDL_Window**: Created by `SDL_CreateWindow`, owned by the Video subsystem.
+- **SDL_Event**: Union struct populated by `SDL_PollEvent` or `SDL_WaitEvent`.

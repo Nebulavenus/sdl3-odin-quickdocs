@@ -188,9 +188,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
     <script>
-        mermaid.initialize({ startOnLoad: false, theme: 'default' });
+        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
         
+        // Custom renderer for marked
+        const renderer = new marked.Renderer();
+        const oldCode = renderer.code.bind(renderer);
+        renderer.code = function(code, lang, escaped) {
+            if (lang === 'mermaid') {
+                return `<div class="mermaid">${code}</div>`;
+            }
+            return oldCode(code, lang, escaped);
+        };
+        marked.setOptions({ renderer: renderer, gfm: true, breaks: true });
+
         const data = DOC_DATA;
+
+        async function renderMermaid() {
+            try {
+                await mermaid.run();
+            } catch (e) {
+                console.error("Mermaid error:", e);
+            }
+        }
 
         function showWelcome() {
             const welcome = document.getElementById('welcome');
@@ -200,15 +219,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             
             if (data.extra_info['index']) {
                 welcome.innerHTML = `<div class="symbol-detail">${marked.parse(data.extra_info['index'])}</div>`;
-                renderMermaid();
+                setTimeout(renderMermaid, 50); // Small delay to ensure DOM is ready
             } else {
                 welcome.innerHTML = `<div class="symbol-detail"><h1>SDL3 Documentation</h1><p>Select a category or symbol to view details.</p></div>`;
             }
             window.location.hash = '';
-        }
-
-        async function renderMermaid() {
-            await mermaid.run();
         }
 
         function renderSidebar() {
@@ -249,6 +264,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
             `;
             Prism.highlightAll();
+            setTimeout(renderMermaid, 50);
         }
 
         function showSymbol(name) {
@@ -316,6 +332,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             `;
             window.location.hash = name;
             Prism.highlightAll();
+            setTimeout(renderMermaid, 50);
         }
 
         document.getElementById('search-input').oninput = (e) => {
