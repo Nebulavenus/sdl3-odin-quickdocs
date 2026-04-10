@@ -125,6 +125,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .description { line-height: 1.6; margin-bottom: 30px; font-size: 1.1em; }
         .description h1, .description h2, .description h3 { color: var(--accent); border-bottom: 1px solid #444; padding-bottom: 5px; }
         
+        .member-table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 20px; background: rgba(0,0,0,0.2); }
+        .member-table td { padding: 10px; border-bottom: 1px solid #333; vertical-align: top; }
+        .member-name { font-family: monospace; color: var(--accent); font-weight: bold; width: 30%; }
+        
         .param-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         .param-table td { padding: 12px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
         .param-name { font-family: monospace; color: var(--accent); white-space: nowrap; width: 150px; }
@@ -276,6 +280,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             let tagsHtml = '';
             if (symbol.tags.description) tagsHtml += `<div class="description">${marked.parse(symbol.tags.description[0])}</div>`;
             
+            if (symbol.members && symbol.members.length > 0) {
+                tagsHtml += `<div class="tag"><div class="tag-name">Members / Fields</div><table class="member-table">` + 
+                    symbol.members.map(m => {
+                        return `<tr><td class="member-name">${m.name}</td><td>${marked.parse(m.desc || '')}</td></tr>`;
+                    }).join('') + `</table></div>`;
+            }
+
             if (symbol.tags.param) {
                 tagsHtml += `<div class="tag"><div class="tag-name">Parameters</div><table class="param-table">` + 
                     symbol.tags.param.map(p => {
@@ -370,7 +381,7 @@ class SDL3DocGen:
                         if rest[i] == '{': count += 1
                         elif rest[i] == '}':
                             count -= 1
-                            if count == 0: end = i + 1; break
+                            if count == 0: { end := i + 1 }; break
                     decl = rest[:end]
                 else: decl = rest[:rest.find('\n')] if rest.find('\n') != -1 else rest
             else: decl = rest[:rest.find('\n')] if rest.find('\n') != -1 else rest
@@ -384,15 +395,23 @@ class SDL3DocGen:
             if attrs: prefix = "\n".join(reversed(attrs)).strip() + "\n"
             self.odin_symbols[name] = (prefix + name + " :: " + decl).strip()
 
+    def parse_internal_members(self, body):
+        members = []
+        for m in re.finditer(r'(\w+)\s*[=,;]\s*/\*\*< (.*?) \*/', body):
+            members.append({"name": m.group(1), "desc": m.group(2).strip()})
+        return members
+
     def extract_c_symbols(self, content, filename):
-        cat = re.search(r'# Category(\w+)', content)
-        category = cat.group(1) if cat else filename.replace("SDL_", "").split('.')[0]
-        # Fixed regex for Doxygen blocks
+        cat_match = re.search(r'# Category(\w+)', content)
+        category = cat_match.group(1) if cat_match else filename.replace("SDL_", "").split('.')[0]
+        
+        # 1. Capture all top-level Doxygen blocks and their subsequent code
         blocks = re.finditer(r'/\*\*(.*?)\*/\s*([^\n;{][^{;]*[;{])', content, re.DOTALL)
         for m in blocks:
             doc, decl_head = m.groups()
             tags = self.parse_doxygen(doc)
-            name, type_str, full_decl = None, "unknown", decl_head
+            name, type_str, full_decl, members = None, "unknown", decl_head, []
+            
             if "extern SDL_DECLSPEC" in decl_head:
                 fn_match = re.search(r'SDLCALL\s+(SDL_\w+)\s*\(', decl_head)
                 if fn_match:
@@ -408,27 +427,39 @@ class SDL3DocGen:
                     if '{' in decl_head or not decl_head.endswith(';'):
                         rem = content[m.end():]
                         end_semi = rem.find(';')
-                        if end_semi != -1: full_decl += rem[:end_semi+1]
+                        if end_semi != -1: 
+                            body = rem[:end_semi+1]
+                            full_decl += body
+                            members = self.parse_internal_members(body)
                 else:
                     td_match = re.search(r'typedef\s+.*?\s+(SDL_\w+)\s*;', decl_head)
                     if td_match: name, type_str = td_match.group(1), "typedef"
             elif "#define" in decl_head:
                 macro_match = re.search(r'#define\s+(SDL_\w+)', decl_head)
                 if macro_match: name, type_str = macro_match.group(1), "macro"
+            
             if name:
                 full_decl = re.sub(r'\s+', ' ', full_decl).strip()
                 ret_type, al = None, []
                 if type_str == "function":
                     fn_parts = re.match(r'extern\s+SDL_DECLSPEC\s+(.*?)\s+SDLCALL', full_decl)
                     if fn_parts: ret_type = self.clean_type(fn_parts.group(1))
-                    arg_match = re.search(r'\\((.*?)\\)', full_decl)
+                    arg_match = re.search(r'\(+(.*?)\)', full_decl)
                     if arg_match:
                         for arg in arg_match.group(1).split(','):
                             arg = arg.strip()
                             if arg and arg != 'void':
                                 p = arg.split(' ')
                                 al.append(self.clean_type(" ".join(p[:-1]) if len(p)>1 else p[0]))
-                self.symbols[name] = {"name": name, "type": type_str, "c_decl": full_decl, "tags": tags, "category": category, "ret_type": ret_type, "args": al}
+                self.symbols[name] = {"name": name, "type": type_str, "c_decl": full_decl, "tags": tags, "category": category, "ret_type": ret_type, "args": al, "members": members}
+                if category not in self.categories: self.categories[category] = []
+                if name not in self.categories[category]: self.categories[category].append(name)
+
+        # 2. Capture grouped macros without unique Doxygen (e.g. SDL_INIT_*)
+        for m in re.finditer(r'#define\s+(SDL_\w+)\s+.*?(?:/\*\*< (.*?) \*/)?', content):
+            name, desc = m.groups()
+            if name not in self.symbols:
+                self.symbols[name] = {"name": name, "type": "macro", "c_decl": m.group(0), "tags": {"description": [desc]} if desc else {}, "category": category}
                 if category not in self.categories: self.categories[category] = []
                 if name not in self.categories[category]: self.categories[category].append(name)
 
@@ -440,8 +471,8 @@ class SDL3DocGen:
             if f.endswith('.h'):
                 with open(os.path.join(self.headers_dir, f), 'r', encoding='utf-8') as file: self.extract_c_symbols(file.read(), f)
         for n, d in self.symbols.items():
-            s = n.replace("SDL_", "")
-            if s in self.odin_symbols: d["odin_decl"] = self.odin_symbols[s]
+            stripped = n.replace("SDL_", "")
+            if stripped in self.odin_symbols: d["odin_decl"] = self.odin_symbols[stripped]
             elif n in self.odin_symbols: d["odin_decl"] = self.odin_symbols[n]
             else:
                 for i in range(1, len(n.split('_'))):
@@ -464,7 +495,8 @@ class SDL3DocGen:
                 if f.endswith('.md'):
                     with open(os.path.join(self.extra_dir, f), 'r', encoding='utf-8') as file: self.extra_info[f.replace('.md', '')] = file.read()
         out = {"categories": self.categories, "symbols": self.symbols, "extra_info": self.extra_info, "hierarchy": self.hierarchy}
-        with open("sdl3_docs.html", "w", encoding="utf-8") as f: f.write(HTML_TEMPLATE.replace("DOC_DATA", json.dumps(out)))
+        with open("sdl3_docs.html", "w", encoding="utf-8") as f:
+            f.write(HTML_TEMPLATE.replace("DOC_DATA", json.dumps(out)))
         print(f"Generated sdl3_docs.html with {len(self.symbols)} symbols.")
 
 if __name__ == "__main__":
