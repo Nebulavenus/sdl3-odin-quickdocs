@@ -87,10 +87,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             padding: 40px;
         }
         .symbol-detail {
-            max-width: 900px;
+            max-width: 1000px;
             margin: 0 auto;
         }
-        h1 { color: var(--accent); }
+        h1 { color: var(--accent); margin-top: 0; }
         .tag {
             margin-bottom: 20px;
         }
@@ -105,9 +105,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             background: var(--code-bg);
             padding: 15px;
             border-radius: 6px;
-            margin-bottom: 20px;
             border: 1px solid var(--border);
             position: relative;
+            overflow-x: auto;
+            margin-bottom: 20px;
         }
         .code-lang {
             position: absolute;
@@ -128,10 +129,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             margin-top: 10px;
         }
         .param-table td {
-            padding: 8px;
+            padding: 12px 8px;
             border-bottom: 1px solid var(--border);
+            vertical-align: top;
         }
-        .param-name { font-family: monospace; color: var(--accent); }
+        .param-name { font-family: monospace; color: var(--accent); white-space: nowrap; width: 150px; }
         .synth-info {
             background: var(--synth-bg);
             padding: 20px;
@@ -177,14 +179,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
     <script>
-        // configured marked for better rendering
-        marked.setOptions({
-            gfm: true,
-            breaks: true,
-            smartypants: true
-        });
+        marked.setOptions({ gfm: true, breaks: true });
 
-        // Odin prism component
         Prism.languages.odin = {
             'comment': [
                 { pattern: /\\/\\/.*|\\/\\*[\\s\\S]*?\\*\\//, greedy: true },
@@ -213,9 +209,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 div.querySelector('.category-name').onclick = () => {
                     const list = div.querySelector('.symbol-list');
                     list.classList.toggle('active');
-                    if (list.classList.contains('active')) {
-                        showCategoryInfo(cat);
-                    }
+                    if (list.classList.contains('active')) showCategoryInfo(cat);
                 };
                 container.appendChild(div);
             });
@@ -259,7 +253,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             let tagsHtml = '';
             if (symbol.tags.description) {
-                // Description can be markdown. Replace literal \\n with actual newline.
                 const desc = symbol.tags.description[0].replace(/\\\\n/g, '\\n');
                 tagsHtml += `<div class="description">${marked.parse(desc)}</div>`;
             }
@@ -290,7 +283,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <div class="symbol-detail">
                     <h1>${name}</h1>
                     ${synthHtml}
-                    ${tagsHtml}
                     
                     <div class="tag-name">Odin Declaration</div>
                     <div class="code-block">
@@ -303,6 +295,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <span class="code-lang">C</span>
                         <pre><code class="language-c">${symbol.c_decl}</code></pre>
                     </div>
+
+                    ${tagsHtml}
                 </div>
             `;
             window.location.hash = name;
@@ -322,7 +316,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         };
 
         renderSidebar();
-        
         if (window.location.hash) {
             const name = window.location.hash.substring(1);
             if (data.symbols[name]) showSymbol(name);
@@ -365,26 +358,22 @@ class SDL3DocGen:
         cat_match = re.search(r'# Category(\w+)', content)
         category = cat_match.group(1) if cat_match else os.path.splitext(filename)[0].replace("SDL_", "")
         
-        # Functions
         func_pattern = r'/\*\*(.*?)\*/\s*extern\s+SDL_DECLSPEC\s+(.*?)\s+SDLCALL\s+(SDL_\w+)\s*\((.*?)\);'
         for m in re.finditer(func_pattern, content, re.DOTALL):
             doc, ret, name, args = m.groups()
             self.add_symbol(name, "function", doc, f"{ret} {name}({args});", category)
 
-        # Typedef Enums
         enum_pattern = r'/\*\*(.*?)\*/\s*typedef\s+enum\s+(SDL_\w+)\s*\{(.*?)\}\s*\2;'
         for m in re.finditer(enum_pattern, content, re.DOTALL):
             doc, name, body = m.groups()
             self.add_symbol(name, "enum", doc, f"typedef enum {name} {{ {body.strip()} }} {name};", category)
 
-        # Typedef Structs
         struct_pattern = r'/\*\*(.*?)\*/\s*typedef\s+struct\s+(SDL_\w+)\s*(?:\{(.*?)\})?\s*\2;'
         for m in re.finditer(struct_pattern, content, re.DOTALL):
             doc, name, body = m.groups()
             decl = f"typedef struct {name} {{ {body.strip() if body else ''} }} {name};"
             self.add_symbol(name, "struct", doc, decl, category)
 
-        # Defines
         define_pattern = r'/\*\*(.*?)\*/\s*#define\s+(SDL_\w+)\s+(.*)'
         for m in re.finditer(define_pattern, content):
             doc, name, val = m.groups()
@@ -401,59 +390,61 @@ class SDL3DocGen:
         self.categories[category].append(name)
 
     def extract_odin_symbols(self, content):
-        # Improved regex to find declarations anywhere, allowing for leading @(attrs)
-        # and making sure it doesn't match words inside comments or strings
-        # \b(\w+)\s*::
-        matches = re.finditer(r'((?:@\(.*?\)\s*)*(\w+)\s*::\s*)', content, re.DOTALL)
+        matches = re.finditer(r'\b(\w+)\s*::\s*', content)
         for m in matches:
-            full_prefix = m.group(1)
-            name = m.group(2)
+            name = m.group(1)
+            if name in ['struct', 'enum', 'union', 'proc', 'foreign', 'import', 'package', 'if', 'when', 'else', 'for', 'switch', 'case', 'return', 'defer', 'using', 'cast', 'typeid']:
+                continue
+            
             start_pos = m.end()
-            
-            # Simple heuristic to avoid matches inside comments
-            # (Checking line start for // or inside /* */ is hard with regex, 
-            # but usually bindings are clean)
-            
             rest = content[start_pos:]
-            if rest.strip().startswith('{'):
-                count = 0
-                end_idx = 0
-                for i, char in enumerate(rest):
-                    if char == '{': count += 1
-                    elif char == '}':
-                        count -= 1
-                        if count == 0:
-                            end_idx = i + 1
-                            break
-                decl = rest[:end_idx]
+            search_rest = rest.lstrip()
+            if not search_rest: continue
+            
+            decl = ""
+            if search_rest.startswith('{') or any(search_rest.startswith(k) for k in ['struct', 'enum', 'union', 'proc']):
+                first_brace = rest.find('{')
+                first_dash = rest.find('---')
+                if first_brace != -1 and (first_dash == -1 or first_brace < first_dash):
+                    count, end_idx = 0, 0
+                    for i in range(first_brace, len(rest)):
+                        if rest[i] == '{': count += 1
+                        elif rest[i] == '}':
+                            count -= 1
+                            if count == 0:
+                                end_idx = i + 1
+                                break
+                    decl = rest[:end_idx]
+                else:
+                    end_line = rest.find('\n')
+                    decl = rest[:end_line] if end_line != -1 else rest
             else:
                 end_line = rest.find('\n')
-                if end_line == -1: end_line = len(rest)
-                decl = rest[:end_line]
+                decl = rest[:end_line] if end_line != -1 else rest
             
-            self.odin_symbols[name] = full_prefix.strip() + " " + decl.strip()
+            prefix = ""
+            search_back = content[:m.start()].split('\n')
+            attr_lines = []
+            for line in reversed(search_back[:-1]):
+                if not line.strip(): continue
+                if '@' in line: attr_lines.append(line)
+                else: break
+            if attr_lines: prefix = "\n".join(reversed(attr_lines)).strip() + "\n"
+
+            self.odin_symbols[name] = (prefix + name + " :: " + decl).strip()
             
             if "enum" in decl:
                 enum_body = re.search(r'\{(.*?)\}', decl, re.DOTALL)
                 if enum_body:
-                    members = re.findall(r'(\w+)\s*[=,]', enum_body.group(1))
-                    for member in members:
-                        if member not in self.odin_symbols:
-                            self.odin_symbols[member] = f"(Member of enum {name})"
+                    for member in re.findall(r'(\w+)\s*[=,]', enum_body.group(1)):
+                        if member not in self.odin_symbols: self.odin_symbols[member] = f"(Member of enum {name})"
 
     def correlate(self):
         for sdl_name, data in self.symbols.items():
-            # Try stripping SDL_
             stripped = sdl_name.replace("SDL_", "")
-            
-            # 1. Exact match with stripped or original
-            if stripped in self.odin_symbols:
-                data["odin_decl"] = self.odin_symbols[stripped]
-            elif sdl_name in self.odin_symbols:
-                data["odin_decl"] = self.odin_symbols[sdl_name]
+            if stripped in self.odin_symbols: data["odin_decl"] = self.odin_symbols[stripped]
+            elif sdl_name in self.odin_symbols: data["odin_decl"] = self.odin_symbols[sdl_name]
             else:
-                # 2. Heuristic for constants/enums that might be stripped further
-                # e.g. SDL_GPU_TEXTUREUSAGE_COLOR_TARGET -> COLOR_TARGET or TEXTUREUSAGE_COLOR_TARGET
                 parts = sdl_name.split('_')
                 for i in range(1, len(parts)):
                     short_name = "_".join(parts[i:])
@@ -472,29 +463,19 @@ class SDL3DocGen:
     def run(self):
         for filename in os.listdir(self.headers_dir):
             if filename.endswith('.odin'):
-                path = os.path.join(self.headers_dir, filename)
-                with open(path, 'r', encoding='utf-8') as f:
+                with open(os.path.join(self.headers_dir, filename), 'r', encoding='utf-8') as f:
                     self.extract_odin_symbols(f.read())
-                    
         for filename in os.listdir(self.headers_dir):
             if filename.endswith('.h'):
-                path = os.path.join(self.headers_dir, filename)
-                with open(path, 'r', encoding='utf-8') as f:
+                with open(os.path.join(self.headers_dir, filename), 'r', encoding='utf-8') as f:
                     self.extract_c_symbols(f.read(), filename)
-        
         self.correlate()
         self.load_extra()
         output_data = {
-            "categories": self.categories,
-            "symbols": self.symbols,
-            "extra_info": self.extra_info,
-            "odin_symbols_debug": list(self.odin_symbols.keys())
+            "categories": self.categories, "symbols": self.symbols, "extra_info": self.extra_info
         }
-        with open("docs_data.json", "w", encoding="utf-8") as f:
-            json.dump(output_data, f, indent=2)
         html = HTML_TEMPLATE.replace("DOC_DATA", json.dumps(output_data))
-        with open("sdl3_docs.html", "w", encoding="utf-8") as f:
-            f.write(html)
+        with open("sdl3_docs.html", "w", encoding="utf-8") as f: f.write(html)
         print(f"Generated sdl3_docs.html with {len(self.symbols)} symbols.")
 
 if __name__ == "__main__":
