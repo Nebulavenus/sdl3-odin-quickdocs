@@ -551,7 +551,7 @@ class SDL3DocumentationGenerator:
             "hierarchy": self.hierarchy
         }
         
-        with open("docs/sdl3_docs.html", "w", encoding="utf-8") as f:
+        with open("docs/index.html", "w", encoding="utf-8") as f:
             # We replace exactly once to avoid accidental nested replacements
             f.write(HTML_TEMPLATE.replace("DOC_DATA", json.dumps(output_data)))
             
