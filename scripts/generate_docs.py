@@ -169,10 +169,39 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
     <script>
+        // Configure Prism Autoloader
+        Prism.plugins.autoloader.languages_path = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/';
+
+        // Robust Odin Definition
+        Prism.languages.odin = {
+            'comment': [
+                { pattern: /\/\/.*|\/\*[\s\S]*?\*\//, greedy: true },
+            ],
+            'string': {
+                pattern: /"(?:\\.|[^\\"\\r\\n])*"|`[\s\S]*?`/,
+                greedy: true
+            },
+            'directive': {
+                pattern: /#\w+/,
+                alias: 'keyword'
+            },
+            'attribute': {
+                pattern: /@\(\w+\)|@\w+/,
+                alias: 'variable'
+            },
+            'keyword': /\b(?:asm|auto_cast|bit_set|break|case|cast|continue|defer|distinct|do|dynamic|else|enum|fallthrough|for|foreign|if|import|in|map|matrix|not_in|or_break|or_continue|or_else|or_return|package|proc|return|struct|switch|transmute|typeid|union|using|when|where)\b/,
+            'builtin': /\b(?:len|cap|size_of|align_of|offset_of|type_of|context|nil|self|any|type|bool|b8|b16|b32|b64|int|i8|i16|i32|i64|i128|uint|u8|u16|u32|u64|u128|uintptr|uintptr_t|f16|f32|f64|complex32|complex64|complex128|quaternion64|quaternion128|quaternion256|string|cstring|rawptr)\b/,
+            'boolean': /\b(?:true|false)\b/,
+            'function': /\b\w+(?=\s*::\s*(?:#\w+\s+)*proc)\b/,
+            'number': /\b(?:0[xX][\da-fA-F_]+|0[oO][0-7_]+|0[bB][01_]+|\d[\d_]*(?:\.[\d_]*)?(?:[eE][+-]?[\d_]+)?)\b/,
+            'operator': /:=|::|->|\.\.\.|\+\+|--|&&|\|\||[-+*/%&|^!<>]=?|~/,
+            'punctuation': /[\{\}\\[\]\(\),.;]/
+        };
+
         mermaid.initialize({ startOnLoad: false, theme: 'dark' });
         
         const data = DOC_DATA;
@@ -392,7 +421,7 @@ class SDL3DocGen:
                         if rest[i] == '{': count += 1
                         elif rest[i] == '}':
                             count -= 1
-                            if count == 0: { end := i + 1 }; break
+                            if count == 0: end = i + 1; break
                     decl = rest[:end]
                 else: decl = rest[:rest.find('\n')] if rest.find('\n') != -1 else rest
             else: decl = rest[:rest.find('\n')] if rest.find('\n') != -1 else rest
@@ -415,14 +444,12 @@ class SDL3DocGen:
     def extract_c_symbols(self, content, filename):
         cat_match = re.search(r'# Category(\w+)', content)
         category = cat_match.group(1) if cat_match else filename.replace("SDL_", "").split('.')[0]
-        
-        # 1. Capture all top-level Doxygen blocks and their subsequent code
+        # Fixed regex for Doxygen blocks
         blocks = re.finditer(r'/\*\*(.*?)\*/\s*([^\n;{][^{;]*[;{])', content, re.DOTALL)
         for m in blocks:
             doc, decl_head = m.groups()
             tags = self.parse_doxygen(doc)
             name, type_str, full_decl, members = None, "unknown", decl_head, []
-            
             if "extern SDL_DECLSPEC" in decl_head:
                 fn_match = re.search(r'SDLCALL\s+(SDL_\w+)\s*\(', decl_head)
                 if fn_match:
@@ -448,14 +475,13 @@ class SDL3DocGen:
             elif "#define" in decl_head:
                 macro_match = re.search(r'#define\s+(SDL_\w+)', decl_head)
                 if macro_match: name, type_str = macro_match.group(1), "macro"
-            
             if name:
                 full_decl = re.sub(r'\s+', ' ', full_decl).strip()
                 ret_type, al = None, []
                 if type_str == "function":
                     fn_parts = re.match(r'extern\s+SDL_DECLSPEC\s+(.*?)\s+SDLCALL', full_decl)
                     if fn_parts: ret_type = self.clean_type(fn_parts.group(1))
-                    arg_match = re.search(r'\(+(.*?)\)', full_decl)
+                    arg_match = re.search(r'\((.*?)\)', full_decl)
                     if arg_match:
                         for arg in arg_match.group(1).split(','):
                             arg = arg.strip()
@@ -465,8 +491,6 @@ class SDL3DocGen:
                 self.symbols[name] = {"name": name, "type": type_str, "c_decl": full_decl, "tags": tags, "category": category, "ret_type": ret_type, "args": al, "members": members}
                 if category not in self.categories: self.categories[category] = []
                 if name not in self.categories[category]: self.categories[category].append(name)
-
-        # 2. Capture grouped macros without unique Doxygen (e.g. SDL_INIT_*)
         for m in re.finditer(r'#define\s+(SDL_\w+)\s+.*?(?:/\*\*< (.*?) \*/)?', content):
             name, desc = m.groups()
             if name not in self.symbols:
