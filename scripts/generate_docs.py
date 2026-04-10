@@ -298,6 +298,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
             if (symbol.tags.returns) tagsHtml += `<div class="tag"><div class="tag-name">Returns</div><div>${marked.parse(symbol.tags.returns[0])}</div></div>`;
             if (symbol.tags.threadsafety) tagsHtml += `<div class="tag"><div class="tag-name">Thread Safety</div><div>${marked.parse(symbol.tags.threadsafety[0])}</div></div>`;
+            if (symbol.tags.notes) tagsHtml += `<div class="tag"><div class="tag-name">Notes</div><div>${marked.parse(symbol.tags.notes[0])}</div></div>`;
+            if (symbol.tags.note) tagsHtml += `<div class="tag"><div class="tag-name">Note</div><div>${marked.parse(symbol.tags.note[0])}</div></div>`;
+            if (symbol.tags.warning) tagsHtml += `<div class="tag"><div class="tag-name">Warning</div><div style="color: #ff8a65;">${marked.parse(symbol.tags.warning[0])}</div></div>`;
+            if (symbol.tags.deprecated) tagsHtml += `<div class="tag"><div class="tag-name">Deprecated</div><div style="color: #e57373; font-weight: bold;">${marked.parse(symbol.tags.deprecated[0])}</div></div>`;
             if (symbol.tags.since) tagsHtml += `<div class="tag"><div class="tag-name">Since</div><div>${symbol.tags.since[0]}</div></div>`;
             if (symbol.tags.sa) {
                 tagsHtml += `<div class="tag"><div class="tag-name">See Also</div><ul class="related-list">` + 
