@@ -154,6 +154,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-radius: 3px;
             font-family: monospace;
         }
+        .mermaid {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
@@ -162,13 +168,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <input type="text" id="search-input" placeholder="Search symbols...">
         </div>
         <div id="categories">
+            <div class="category">
+                <span class="category-name" onclick="showWelcome()">🏠 Overview</span>
+            </div>
             <!-- Categories injected here -->
         </div>
     </div>
     <div id="content">
         <div id="welcome">
-            <h1>SDL3 Documentation</h1>
-            <p>Select a category or symbol to view details.</p>
+            <!-- index.md injected here -->
         </div>
         <div id="detail" style="display:none">
             <!-- Details injected here -->
@@ -178,23 +186,30 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
     <script>
-        marked.setOptions({ gfm: true, breaks: true });
-
-        Prism.languages.odin = {
-            'comment': [
-                { pattern: /\\/\\/.*|\\/\\*[\\s\\S]*?\\*\\//, greedy: true },
-            ],
-            'string': { pattern: /"(?:\\\\.|[^\\\\"\\r\\n])*"/, greedy: true },
-            'keyword': /\\b(?:package|import|foreign|where|when|if|else|for|switch|case|break|continue|return|defer|using|cast|typeid|struct|union|enum|proc|map|distinct)\\b/,
-            'boolean': /\\b(?:true|false|nil)\\b/,
-            'function': /\\b\\w+(?=\\s*::\\s*proc)/,
-            'number': /\\b(?:0[xX][\\da-fA-F]+(?:_[\\da-fA-F]+)*|0[oO][0-7]+(?:_[0-7]+)*|0[bB][01]+(?:_[01]+)*|\\d+(?:_\\d+)*(?:\\.\\d+(?:_\\d+)*)?(?:[eE][+-]?\\d+(?:_\\d+)*)?)\\b/,
-            'operator': /:=|::|->|\\.\\.\\.|\\+\\+|--|&&|\\|\\||[-+*/%&|^!<>]=?|~/,
-            'punctuation': /[\\{\\}\\[\\]\\(\\),.;]/
-        };
-
+        mermaid.initialize({ startOnLoad: false, theme: 'default' });
+        
         const data = DOC_DATA;
+
+        function showWelcome() {
+            const welcome = document.getElementById('welcome');
+            const detail = document.getElementById('detail');
+            welcome.style.display = 'block';
+            detail.style.display = 'none';
+            
+            if (data.extra_info['index']) {
+                welcome.innerHTML = `<div class="symbol-detail">${marked.parse(data.extra_info['index'])}</div>`;
+                renderMermaid();
+            } else {
+                welcome.innerHTML = `<div class="symbol-detail"><h1>SDL3 Documentation</h1><p>Select a category or symbol to view details.</p></div>`;
+            }
+            window.location.hash = '';
+        }
+
+        async function renderMermaid() {
+            await mermaid.run();
+        }
 
         function renderSidebar() {
             const container = document.getElementById('categories');
@@ -318,7 +333,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         renderSidebar();
         if (window.location.hash) {
             const name = window.location.hash.substring(1);
-            if (data.symbols[name]) showSymbol(name);
+            if (data.symbols[name]) {
+                showSymbol(name);
+            } else if (data.categories[name]) {
+                showCategoryInfo(name);
+            } else {
+                showWelcome();
+            }
+        } else {
+            showWelcome();
         }
     </script>
 </body>
