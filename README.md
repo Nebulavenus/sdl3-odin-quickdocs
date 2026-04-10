@@ -1,4 +1,4 @@
-# SDL3 Quick Docs Generator
+# SDL3 Odin Quick Docs Generator
 
 A "vibecoded" single-file documentation generator for SDL3, bridging C headers and Odin bindings.
 
