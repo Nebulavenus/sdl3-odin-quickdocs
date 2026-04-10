@@ -299,6 +299,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             if (symbol.tags.returns) tagsHtml += `<div class="tag"><div class="tag-name">Returns</div><div>${marked.parse(symbol.tags.returns[0])}</div></div>`;
             if (symbol.tags.threadsafety) tagsHtml += `<div class="tag"><div class="tag-name">Thread Safety</div><div>${marked.parse(symbol.tags.threadsafety[0])}</div></div>`;
             if (symbol.tags.since) tagsHtml += `<div class="tag"><div class="tag-name">Since</div><div>${symbol.tags.since[0]}</div></div>`;
+            if (symbol.tags.sa) {
+                tagsHtml += `<div class="tag"><div class="tag-name">See Also</div><ul class="related-list">` + 
+                    symbol.tags.sa.map(s => {
+                        const symName = s.trim();
+                        return `<li class="api-link" onclick="showSymbol('${symName}')">${symName}</li>`;
+                    }).join('') + `</ul></div>`;
+            }
 
             let hierarchyHtml = '';
             if (data.hierarchy[name]) {
