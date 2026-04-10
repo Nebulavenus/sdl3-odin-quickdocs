@@ -34,3 +34,9 @@ graph TD
 - **SDL_InitFlags**: Bit-set passed to `SDL_Init` (e.g., `SDL_INIT_VIDEO`, `SDL_INIT_AUDIO`).
 - **SDL_Window**: Created by `SDL_CreateWindow`, owned by the Video subsystem.
 - **SDL_Event**: Union struct populated by `SDL_PollEvent` or `SDL_WaitEvent`.
+
+## Interactive Object API
+This documentation automatically groups functions by the "Object" (Handle) they operate on. When you view a **Struct** page, you will find a **Functional API** section listing all associated:
+- **Constructors**: Functions that create the object.
+- **Methods**: Functions that take the object as their first parameter.
+- **Destructors**: Functions that cleanup the object.

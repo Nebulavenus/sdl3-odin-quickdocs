@@ -29,7 +29,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             overflow: hidden;
         }
         #sidebar {
-            width: 300px;
+            width: 350px;
             background: var(--sidebar-bg);
             border-right: 1px solid var(--border);
             display: flex;
@@ -160,6 +160,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-radius: 4px;
             margin: 20px 0;
         }
+        .related-section {
+            background: rgba(255,255,255,0.05);
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            border: 1px solid var(--border);
+        }
+        .related-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 8px;
+            list-style: none;
+            padding: 0;
+            margin-top: 10px;
+        }
+        .api-link {
+            color: var(--accent);
+            text-decoration: none;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .api-link:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -175,12 +197,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
     </div>
     <div id="content">
-        <div id="welcome">
-            <!-- index.md injected here -->
-        </div>
-        <div id="detail" style="display:none">
-            <!-- Details injected here -->
-        </div>
+        <div id="welcome"></div>
+        <div id="detail" style="display:none"></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
@@ -190,13 +208,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <script>
         mermaid.initialize({ startOnLoad: false, theme: 'dark' });
         
-        // Custom renderer for marked
         const renderer = new marked.Renderer();
         const oldCode = renderer.code.bind(renderer);
         renderer.code = function(code, lang, escaped) {
-            if (lang === 'mermaid') {
-                return `<div class="mermaid">${code}</div>`;
-            }
+            if (lang === 'mermaid') return `<div class="mermaid">${code}</div>`;
             return oldCode(code, lang, escaped);
         };
         marked.setOptions({ renderer: renderer, gfm: true, breaks: true });
@@ -204,11 +219,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const data = DOC_DATA;
 
         async function renderMermaid() {
-            try {
-                await mermaid.run();
-            } catch (e) {
-                console.error("Mermaid error:", e);
-            }
+            try { await mermaid.run(); } catch (e) { console.error(e); }
         }
 
         function showWelcome() {
@@ -216,12 +227,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const detail = document.getElementById('detail');
             welcome.style.display = 'block';
             detail.style.display = 'none';
-            
             if (data.extra_info['index']) {
                 welcome.innerHTML = `<div class="symbol-detail">${marked.parse(data.extra_info['index'])}</div>`;
-                setTimeout(renderMermaid, 50); // Small delay to ensure DOM is ready
-            } else {
-                welcome.innerHTML = `<div class="symbol-detail"><h1>SDL3 Documentation</h1><p>Select a category or symbol to view details.</p></div>`;
+                setTimeout(renderMermaid, 50);
             }
             window.location.hash = '';
         }
@@ -235,7 +243,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <ul class="symbol-list">
                         ${data.categories[cat].sort().map(s => `<li class="symbol-item" onclick="showSymbol('${s}')">${s}</li>`).join('')}
                     </ul>`;
-                
                 div.querySelector('.category-name').onclick = () => {
                     const list = div.querySelector('.symbol-list');
                     list.classList.toggle('active');
@@ -250,83 +257,50 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const detail = document.getElementById('detail');
             welcome.style.display = 'none';
             detail.style.display = 'block';
-            
-            let synthHtml = '';
-            if (data.extra_info[cat]) {
-                synthHtml = `<div class="synth-info">${marked.parse(data.extra_info[cat])}</div>`;
-            }
-
-            detail.innerHTML = `
-                <div class="symbol-detail">
-                    <h1>Category: ${cat}</h1>
-                    ${synthHtml}
-                    <p>Select a symbol from the sidebar to view its details.</p>
-                </div>
-            `;
+            let synthHtml = data.extra_info[cat] ? `<div class="synth-info">${marked.parse(data.extra_info[cat])}</div>` : '';
+            detail.innerHTML = `<div class="symbol-detail"><h1>Category: ${cat}</h1>${synthHtml}<p>Select a symbol from the sidebar to view details.</p></div>`;
             Prism.highlightAll();
             setTimeout(renderMermaid, 50);
         }
 
         function showSymbol(name) {
             const symbol = data.symbols[name];
-            const welcome = document.getElementById('welcome');
+            if (!symbol) return;
+            document.getElementById('welcome').style.display = 'none';
             const detail = document.getElementById('detail');
-            welcome.style.display = 'none';
             detail.style.display = 'block';
 
-            let synthHtml = '';
-            if (data.extra_info[name]) {
-                synthHtml = `<div class="synth-info">
-                    <div class="tag-name">Synthesized Info</div>
-                    ${marked.parse(data.extra_info[name])}
-                </div>`;
-            }
-
-            let tagsHtml = '';
-            if (symbol.tags.description) {
-                const desc = symbol.tags.description[0].replace(/\\\\n/g, '\\n');
-                tagsHtml += `<div class="description">${marked.parse(desc)}</div>`;
-            }
-
+            let synthHtml = data.extra_info[name] ? `<div class="synth-info"><div class="tag-name">Synthesized Info</div>${marked.parse(data.extra_info[name])}</div>` : '';
+            let tagsHtml = symbol.tags.description ? `<div class="description">${marked.parse(symbol.tags.description[0].replace(/\\\\n/g, '\\\\n'))}</div>` : '';
+            
             if (symbol.tags.param) {
-                tagsHtml += `<div class="tag"><div class="tag-name">Parameters</div>
-                    <table class="param-table">
-                        ${symbol.tags.param.map(p => {
-                            const firstSpace = p.indexOf(' ');
-                            if (firstSpace === -1) return `<tr><td class="param-name">${p}</td><td></td></tr>`;
-                            const pname = p.substring(0, firstSpace);
-                            const pdesc = p.substring(firstSpace + 1);
-                            return `<tr><td class="param-name">${pname}</td><td>${marked.parse(pdesc)}</td></tr>`;
-                        }).join('')}
-                    </table>
+                tagsHtml += `<div class="tag"><div class="tag-name">Parameters</div><table class="param-table">` + 
+                    symbol.tags.param.map(p => {
+                        const s = p.indexOf(' ');
+                        return `<tr><td class="param-name">${s === -1 ? p : p.substring(0,s)}</td><td>${s === -1 ? '' : marked.parse(p.substring(s+1))}</td></tr>`;
+                    }).join('') + `</table></div>`;
+            }
+
+            let hierarchyHtml = '';
+            if (symbol.type === 'struct' && data.hierarchy[name]) {
+                const h = data.hierarchy[name];
+                hierarchyHtml = `<div class="related-section">
+                    <div class="tag-name">Functional API: ${name}</div>
+                    ${h.creators.length ? `<div><b>Constructors:</b><ul class="related-list">${h.creators.map(c => `<li class="api-link" onclick="showSymbol('${c}')">${c}</li>`).join('')}</ul></div>` : ''}
+                    ${h.methods.length ? `<div style="margin-top:15px"><b>Methods:</b><ul class="related-list">${h.methods.map(m => `<li class="api-link" onclick="showSymbol('${m}')">${m}</li>`).join('')}</ul></div>` : ''}
+                    ${h.destructors.length ? `<div style="margin-top:15px"><b>Destructors:</b><ul class="related-list">${h.destructors.map(d => `<li class="api-link" onclick="showSymbol('${d}')">${d}</li>`).join('')}</ul></div>` : ''}
                 </div>`;
-            }
-
-            if (symbol.tags.returns) {
-                tagsHtml += `<div class="tag"><div class="tag-name">Returns</div><div>${marked.parse(symbol.tags.returns[0])}</div></div>`;
-            }
-
-            if (symbol.tags.since) {
-                tagsHtml += `<div class="tag"><div class="tag-name">Since</div><div>${symbol.tags.since[0]}</div></div>`;
             }
 
             detail.innerHTML = `
                 <div class="symbol-detail">
                     <h1>${name}</h1>
                     ${synthHtml}
-                    
                     <div class="tag-name">Odin Declaration</div>
-                    <div class="code-block">
-                        <span class="code-lang">Odin</span>
-                        <pre><code class="language-odin">${symbol.odin_decl || 'Not bound in Odin'}</code></pre>
-                    </div>
-
+                    <div class="code-block"><span class="code-lang">Odin</span><pre><code class="language-odin">${symbol.odin_decl || 'Not bound'}</code></pre></div>
                     <div class="tag-name">C Declaration</div>
-                    <div class="code-block">
-                        <span class="code-lang">C</span>
-                        <pre><code class="language-c">${symbol.c_decl}</code></pre>
-                    </div>
-
+                    <div class="code-block"><span class="code-lang">C</span><pre><code class="language-c">${symbol.c_decl}</code></pre></div>
+                    ${hierarchyHtml}
                     ${tagsHtml}
                 </div>
             `;
@@ -338,28 +312,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         document.getElementById('search-input').oninput = (e) => {
             const query = e.target.value.toLowerCase();
             document.querySelectorAll('.symbol-item').forEach(item => {
-                if (item.innerText.toLowerCase().includes(query)) {
-                    item.style.display = 'block';
-                    item.closest('.symbol-list').classList.add('active');
-                } else {
-                    item.style.display = 'none';
-                }
+                item.style.display = item.innerText.toLowerCase().includes(query) ? 'block' : 'none';
             });
         };
 
         renderSidebar();
         if (window.location.hash) {
-            const name = window.location.hash.substring(1);
-            if (data.symbols[name]) {
-                showSymbol(name);
-            } else if (data.categories[name]) {
-                showCategoryInfo(name);
-            } else {
-                showWelcome();
-            }
-        } else {
-            showWelcome();
-        }
+            const n = window.location.hash.substring(1);
+            if (data.symbols[n]) showSymbol(n); else showWelcome();
+        } else showWelcome();
     </script>
 </body>
 </html>"""
@@ -368,156 +329,117 @@ class SDL3DocGen:
     def __init__(self, headers_dir, extra_dir):
         self.headers_dir = headers_dir
         self.extra_dir = extra_dir
-        self.symbols = {} # name -> data
-        self.categories = {} # cat_name -> list of symbols
-        self.extra_info = {} # name/cat -> md content
-        self.odin_symbols = {} # name -> decl
+        self.symbols = {}
+        self.categories = {}
+        self.extra_info = {}
+        self.odin_symbols = {}
+        self.hierarchy = {}
+
+    def clean_type(self, t):
+        return t.replace('const', '').replace('*', '').strip()
 
     def parse_doxygen(self, block):
         if not block: return {}
-        lines = block.split('\n')
-        tags = {}
-        current_tag = "description"
-        tag_content = []
-        for line in lines:
+        tags = {"description": []}
+        cur = "description"
+        content = []
+        for line in block.split('\n'):
             line = line.strip().lstrip('*').strip()
-            match = re.match(r'\\(\w+)\s*(.*)', line)
-            if match:
-                if tag_content:
-                    tags[current_tag] = tags.get(current_tag, []) + ["\\n".join(tag_content).strip()]
-                current_tag = match.group(1)
-                remainder = match.group(2).strip()
-                tag_content = [remainder] if remainder else []
-            else:
-                tag_content.append(line)
-        if tag_content:
-            tags[current_tag] = tags.get(current_tag, []) + ["\\n".join(tag_content).strip()]
+            m = re.match(r'\\(\w+)\s*(.*)', line)
+            if m:
+                if content:
+                    if cur not in tags: tags[cur] = []
+                    tags[cur].append("\\n".join(content).strip())
+                cur, rem = m.groups()
+                if cur not in tags: tags[cur] = []
+                content = [rem] if rem else []
+            else: content.append(line)
+        if content:
+            if cur not in tags: tags[cur] = []
+            tags[cur].append("\\n".join(content).strip())
         return tags
 
-    def extract_c_symbols(self, content, filename):
-        cat_match = re.search(r'# Category(\w+)', content)
-        category = cat_match.group(1) if cat_match else os.path.splitext(filename)[0].replace("SDL_", "")
-        
-        func_pattern = r'/\*\*(.*?)\*/\s*extern\s+SDL_DECLSPEC\s+(.*?)\s+SDLCALL\s+(SDL_\w+)\s*\((.*?)\);'
-        for m in re.finditer(func_pattern, content, re.DOTALL):
-            doc, ret, name, args = m.groups()
-            self.add_symbol(name, "function", doc, f"{ret} {name}({args});", category)
-
-        enum_pattern = r'/\*\*(.*?)\*/\s*typedef\s+enum\s+(SDL_\w+)\s*\{(.*?)\}\s*\2;'
-        for m in re.finditer(enum_pattern, content, re.DOTALL):
-            doc, name, body = m.groups()
-            self.add_symbol(name, "enum", doc, f"typedef enum {name} {{ {body.strip()} }} {name};", category)
-
-        struct_pattern = r'/\*\*(.*?)\*/\s*typedef\s+struct\s+(SDL_\w+)\s*(?:\{(.*?)\})?\s*\2;'
-        for m in re.finditer(struct_pattern, content, re.DOTALL):
-            doc, name, body = m.groups()
-            decl = f"typedef struct {name} {{ {body.strip() if body else ''} }} {name};"
-            self.add_symbol(name, "struct", doc, decl, category)
-
-        define_pattern = r'/\*\*(.*?)\*/\s*#define\s+(SDL_\w+)\s+(.*)'
-        for m in re.finditer(define_pattern, content):
-            doc, name, val = m.groups()
-            self.add_symbol(name, "macro", doc, f"#define {name} {val.strip()}", category)
-
-    def add_symbol(self, name, type, doc, decl, category):
-        tags = self.parse_doxygen(doc)
-        data = {
-            "name": name, "type": type, "c_decl": decl.strip(),
-            "tags": tags, "category": category, "odin_decl": None
-        }
-        self.symbols[name] = data
-        if category not in self.categories: self.categories[category] = []
-        self.categories[category].append(name)
-
     def extract_odin_symbols(self, content):
-        matches = re.finditer(r'\b(\w+)\s*::\s*', content)
-        for m in matches:
+        for m in re.finditer(r'\b(\w+)\s*::\s*', content):
             name = m.group(1)
-            if name in ['struct', 'enum', 'union', 'proc', 'foreign', 'import', 'package', 'if', 'when', 'else', 'for', 'switch', 'case', 'return', 'defer', 'using', 'cast', 'typeid']:
-                continue
-            
-            start_pos = m.end()
-            rest = content[start_pos:]
+            if name in ['struct', 'enum', 'proc', 'if', 'for', 'switch']: continue
+            rest = content[m.end():]
             search_rest = rest.lstrip()
             if not search_rest: continue
-            
             decl = ""
-            if search_rest.startswith('{') or any(search_rest.startswith(k) for k in ['struct', 'enum', 'union', 'proc']):
-                first_brace = rest.find('{')
-                first_dash = rest.find('---')
-                if first_brace != -1 and (first_dash == -1 or first_brace < first_dash):
-                    count, end_idx = 0, 0
-                    for i in range(first_brace, len(rest)):
+            if search_rest.startswith('{') or any(search_rest.startswith(k) for k in ['struct', 'enum', 'proc']):
+                brace, count, end = rest.find('{'), 0, 0
+                if brace != -1 and (rest.find('---') == -1 or brace < rest.find('---')):
+                    for i in range(brace, len(rest)):
                         if rest[i] == '{': count += 1
                         elif rest[i] == '}':
                             count -= 1
                             if count == 0:
-                                end_idx = i + 1
+                                end = i + 1
                                 break
-                    decl = rest[:end_idx]
-                else:
-                    end_line = rest.find('\n')
-                    decl = rest[:end_line] if end_line != -1 else rest
-            else:
-                end_line = rest.find('\n')
-                decl = rest[:end_line] if end_line != -1 else rest
-            
+                    decl = rest[:end]
+                else: decl = rest[:rest.find('\n')] if rest.find('\n') != -1 else rest
+            else: decl = rest[:rest.find('\n')] if rest.find('\n') != -1 else rest
             prefix = ""
-            search_back = content[:m.start()].split('\n')
-            attr_lines = []
-            for line in reversed(search_back[:-1]):
-                if not line.strip(): continue
-                if '@' in line: attr_lines.append(line)
+            back = content[:m.start()].split('\n')
+            attrs = []
+            for l in reversed(back[:-1]):
+                if not l.strip(): continue
+                if '@' in l: attrs.append(l)
                 else: break
-            if attr_lines: prefix = "\n".join(reversed(attr_lines)).strip() + "\n"
-
+            if attrs: prefix = "\n".join(reversed(attrs)).strip() + "\n"
             self.odin_symbols[name] = (prefix + name + " :: " + decl).strip()
-            
-            if "enum" in decl:
-                enum_body = re.search(r'\{(.*?)\}', decl, re.DOTALL)
-                if enum_body:
-                    for member in re.findall(r'(\w+)\s*[=,]', enum_body.group(1)):
-                        if member not in self.odin_symbols: self.odin_symbols[member] = f"(Member of enum {name})"
 
-    def correlate(self):
-        for sdl_name, data in self.symbols.items():
-            stripped = sdl_name.replace("SDL_", "")
-            if stripped in self.odin_symbols: data["odin_decl"] = self.odin_symbols[stripped]
-            elif sdl_name in self.odin_symbols: data["odin_decl"] = self.odin_symbols[sdl_name]
-            else:
-                parts = sdl_name.split('_')
-                for i in range(1, len(parts)):
-                    short_name = "_".join(parts[i:])
-                    if short_name in self.odin_symbols:
-                        data["odin_decl"] = self.odin_symbols[short_name]
-                        break
-
-    def load_extra(self):
-        if not os.path.exists(self.extra_dir): return
-        for filename in os.listdir(self.extra_dir):
-            if filename.endswith('.md'):
-                name = os.path.splitext(filename)[0]
-                with open(os.path.join(self.extra_dir, filename), 'r', encoding='utf-8') as f:
-                    self.extra_info[name] = f.read()
+    def extract_c_symbols(self, content, filename):
+        cat = re.search(r'# Category(\w+)', content)
+        category = cat.group(1) if cat else filename.replace("SDL_", "").split('.')[0]
+        for m in re.finditer(r'/\*\*(.*?)\*/\s*extern\s+SDL_DECLSPEC\s+(.*?)\s+SDLCALL\s+(SDL_\w+)\s*\((.*?)\);', content, re.DOTALL):
+            doc, ret, name, args = m.groups()
+            al = [self.clean_type(a.strip().split(' ')[0]) for a in args.split(',') if a.strip() and a.strip() != 'void']
+            self.symbols[name] = {"name": name, "type": "function", "c_decl": f"{ret} {name}({args});", "tags": self.parse_doxygen(doc), "category": category, "ret_type": self.clean_type(ret), "args": al}
+            if category not in self.categories: self.categories[category] = []
+            self.categories[category].append(name)
+        for m in re.finditer(r'/\*\*(.*?)\*/\s*typedef\s+struct\s+(SDL_\w+)\s*(?:\{(.*?)\})?\s*\2;', content, re.DOTALL):
+            doc, name, body = m.groups()
+            self.symbols[name] = {"name": name, "type": "struct", "c_decl": f"typedef struct {name} {{ ... }} {name};", "tags": self.parse_doxygen(doc), "category": category}
+            if category not in self.categories: self.categories[category] = []
+            self.categories[category].append(name)
 
     def run(self):
-        for filename in os.listdir(self.headers_dir):
-            if filename.endswith('.odin'):
-                with open(os.path.join(self.headers_dir, filename), 'r', encoding='utf-8') as f:
-                    self.extract_odin_symbols(f.read())
-        for filename in os.listdir(self.headers_dir):
-            if filename.endswith('.h'):
-                with open(os.path.join(self.headers_dir, filename), 'r', encoding='utf-8') as f:
-                    self.extract_c_symbols(f.read(), filename)
-        self.correlate()
-        self.load_extra()
-        output_data = {
-            "categories": self.categories, "symbols": self.symbols, "extra_info": self.extra_info
-        }
-        html = HTML_TEMPLATE.replace("DOC_DATA", json.dumps(output_data))
-        with open("sdl3_docs.html", "w", encoding="utf-8") as f: f.write(html)
+        for f in os.listdir(self.headers_dir):
+            path = os.path.join(self.headers_dir, f)
+            with open(path, 'r', encoding='utf-8') as file:
+                if f.endswith('.odin'): self.extract_odin_symbols(file.read())
+                elif f.endswith('.h'): self.extract_c_symbols(file.read(), f)
+        for n, d in self.symbols.items():
+            s = n.replace("SDL_", "")
+            if s in self.odin_symbols: d["odin_decl"] = self.odin_symbols[s]
+            elif n in self.odin_symbols: d["odin_decl"] = self.odin_symbols[n]
+            else:
+                for i in range(1, len(n.split('_'))):
+                    sh = "_".join(n.split('_')[i:])
+                    if sh in self.odin_symbols:
+                        d["odin_decl"] = self.odin_symbols[sh]
+                        break
+        for n, d in self.symbols.items():
+            if d['type'] == 'struct': self.hierarchy[n] = {"creators": [], "methods": [], "destructors": []}
+        for n, d in self.symbols.items():
+            if d['type'] == 'function':
+                r, a = d.get('ret_type'), d.get('args', [])
+                if r in self.hierarchy: self.hierarchy[r]["creators"].append(n)
+                elif a and a[0] in self.hierarchy:
+                    h = a[0]
+                    if any(x in n for x in ["Destroy", "Free", "Close"]): self.hierarchy[h]["destructors"].append(n)
+                    else: self.hierarchy[h]["methods"].append(n)
+        if os.path.exists(self.extra_dir):
+            for f in os.listdir(self.extra_dir):
+                if f.endswith('.md'):
+                    with open(os.path.join(self.extra_dir, f), 'r', encoding='utf-8') as file:
+                        self.extra_info[f.replace('.md', '')] = file.read()
+        out = {"categories": self.categories, "symbols": self.symbols, "extra_info": self.extra_info, "hierarchy": self.hierarchy}
+        with open("sdl3_docs.html", "w", encoding="utf-8") as f:
+            f.write(HTML_TEMPLATE.replace("DOC_DATA", json.dumps(out)))
         print(f"Generated sdl3_docs.html with {len(self.symbols)} symbols.")
 
 if __name__ == "__main__":
-    gen = SDL3DocGen("Headers", "extra")
-    gen.run()
+    SDL3DocGen("Headers", "extra").run()
